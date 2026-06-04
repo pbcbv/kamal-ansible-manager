@@ -22,13 +22,13 @@
       - apt-transport-https
       - build-essential
       - ca-certificates
+      - chrony
       - curl
       - duf
       - fail2ban
       - git
       - gnupg
       - htop
-      - ntp
       - ufw
       - unattended-upgrades
       - vim
@@ -37,7 +37,7 @@
     autoremove: true
     autoclean: true
   notify:
-    - Start ntp
+    - Start chrony
     - Start fail2ban
 
 - name: Remove snap

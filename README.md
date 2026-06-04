@@ -13,7 +13,7 @@ It will automatically update your packages and configure these packages to secur
 - [Docker](https://docs.docker.com/engine/install/ubuntu/)
 - [Fail2ban](https://github.com/fail2ban/fail2ban)
 - [UFW](https://wiki.ubuntu.com/UncomplicatedFirewall)
-- [NTP](https://ubuntu.com/server/docs/network-ntp)
+- [Chrony](https://ubuntu.com/server/docs/network-ntp) (NTP time synchronization)
 
 The playbook also:
 - Remove [Snap](https://snapcraft.io/).

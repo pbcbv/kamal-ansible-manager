@@ -1,7 +1,7 @@
 ---
-- name: Start ntp
+- name: Start chrony
   ansible.builtin.service:
-    name: ntp
+    name: chrony
     state: started
     enabled: true
 
