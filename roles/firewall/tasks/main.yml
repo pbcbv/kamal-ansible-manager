@@ -28,3 +28,29 @@
 - name: Enable ufw
   community.general.ufw:
     state: enabled
+
+# Docker inserts its own rules into the FORWARD chain, which take priority over
+# UFW and let containers publish ports straight to the internet regardless of
+# the ufw rules above. Restricting the DOCKER-USER chain to the same ports ufw
+# allows closes that bypass.
+#
+# This is added to ufw's own after.rules (rather than raw iptables +
+# iptables-persistent) because on Ubuntu the ufw package declares
+# `Breaks: iptables-persistent, netfilter-persistent` — installing
+# iptables-persistent alongside ufw gets ufw auto-removed by apt. ufw already
+# reapplies after.rules on every start, so no separate persistence mechanism
+# is needed, and Docker never flushes rules it didn't add to DOCKER-USER.
+# See: https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw
+- name: Restrict DOCKER-USER chain to the ports ufw allows
+  ansible.builtin.blockinfile:
+    path: /etc/ufw/after.rules
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - docker-user"
+    insertbefore: "^COMMIT"
+    content: |
+      :DOCKER-USER - [0:0]
+      -A DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      -A DOCKER-USER -p tcp --dport 80 -j RETURN
+      -A DOCKER-USER -p tcp --dport 443 -j RETURN
+      -A DOCKER-USER -j DROP
+  notify:
+    - Reload ufw
