@@ -1,8 +1,8 @@
 # Kamal Ansible Manager
 
-This is an [Ansible](https://www.ansible.com/) playbook to automatically optimize and secure your servers for [Kamal](https://kamal-deploy.org/), for Ubuntu only.
+Peter's private Ansible playbook to automatically optimize and secure servers for [Kamal](https://kamal-deploy.org/) across all `pbcbv` projects. Ubuntu only.
 
-Here's a quick video walkthrough of how this repo works:
+Forked from [guillaumebriday/kamal-ansible-manager](https://github.com/guillaumebriday/kamal-ansible-manager) — here's the original author's video walkthrough of how the repo works:
 
 [![Watch the video](https://raw.githubusercontent.com/guillaumebriday/kamal-ansible-manager/main/thumbnail.png)](https://www.youtube.com/watch?v=WTYNPCEJSOo)
 
@@ -11,8 +11,8 @@ Here's a quick video walkthrough of how this repo works:
 It will automatically update your packages and configure these packages to secure your server(s):
 
 - [Docker](https://docs.docker.com/engine/install/ubuntu/)
-- [Fail2ban](https://github.com/fail2ban/fail2ban)
-- [UFW](https://wiki.ubuntu.com/UncomplicatedFirewall)
+- [Fail2ban](https://github.com/fail2ban/fail2ban), with the `sshd` jail enabled and tuned (`jail.local`)
+- [UFW](https://wiki.ubuntu.com/UncomplicatedFirewall), including a `DOCKER-USER` firewall rule so containers can't bypass UFW by publishing ports directly (see [Docker's docs](https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw))
 - [Chrony](https://ubuntu.com/server/docs/network-ntp) (NTP time synchronization)
 
 The playbook also:
@@ -24,7 +24,7 @@ The playbook also:
 
 Clone the repo:
 ```bash
-$ git clone git@github.com:guillaumebriday/kamal-ansible-manager.git
+$ git clone git@github.com:pbcbv/kamal-ansible-manager.git
 $ cd kamal-ansible-manager
 ```
 
@@ -78,10 +78,6 @@ $ ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook scaleway.yml
 ```
 
 Then, it will continue the provisioning process on the newly created servers.
-
-## Contributing
-
-Do not hesitate to contribute to the project by adapting or adding features ! Bug reports or pull requests are welcome.
 
 ## License
 
