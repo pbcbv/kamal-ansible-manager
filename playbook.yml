@@ -7,10 +7,13 @@
     security_autoupdate_reboot: "false"
     # The time to trigger a reboot, when needed, if security_autoupdate_reboot is set to true. In 24h "hh:mm" clock format.
     security_autoupdate_reboot_time: "03:00"
+    # Non-root user Kamal should deploy as. Gets root's authorized_keys and docker group membership.
+    deploy_user_name: "deploy"
   roles:
     - wait_for_connection
     - packages
     - docker
+    - deploy_user
     - firewall
     - security
     - geerlingguy.swap

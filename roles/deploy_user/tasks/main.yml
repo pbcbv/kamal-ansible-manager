@@ -1,0 +1,25 @@
+---
+- name: Create the deploy user
+  ansible.builtin.user:
+    name: "{{ deploy_user_name }}"
+    groups: docker
+    append: true
+    shell: /bin/bash
+    create_home: true
+
+- name: Ensure .ssh directory exists for the deploy user
+  ansible.builtin.file:
+    path: "/home/{{ deploy_user_name }}/.ssh"
+    state: directory
+    owner: "{{ deploy_user_name }}"
+    group: "{{ deploy_user_name }}"
+    mode: "0700"
+
+- name: Authorize the same SSH keys as root for the deploy user
+  ansible.builtin.copy:
+    src: "/root/.ssh/authorized_keys"
+    dest: "/home/{{ deploy_user_name }}/.ssh/authorized_keys"
+    remote_src: true
+    owner: "{{ deploy_user_name }}"
+    group: "{{ deploy_user_name }}"
+    mode: "0600"
