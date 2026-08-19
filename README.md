@@ -1,6 +1,6 @@
 # Kamal Ansible Manager
 
-Peter's private Ansible playbook to automatically optimize and secure servers for [Kamal](https://kamal-deploy.org/) across all `pbcbv` projects. Ubuntu only.
+Ansible playbook to automatically optimize and secure servers for [Kamal](https://kamal-deploy.org/). Ubuntu only.
 
 Forked from [guillaumebriday/kamal-ansible-manager](https://github.com/guillaumebriday/kamal-ansible-manager) — here's the original author's video walkthrough of how the repo works:
 
