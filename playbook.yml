@@ -7,8 +7,13 @@
     security_autoupdate_reboot: "false"
     # The time to trigger a reboot, when needed, if security_autoupdate_reboot is set to true. In 24h "hh:mm" clock format.
     security_autoupdate_reboot_time: "03:00"
-    # Non-root user Kamal should deploy as. Gets root's authorized_keys and docker group membership.
+    # Non-root user Kamal should deploy as. Gets docker group membership.
     deploy_user_name: "deploy"
+    # Who may SSH in as that user. When set, this list is authoritative and is
+    # written verbatim to its authorized_keys, so a key removed here is removed
+    # from the host on the next run. When left empty, root's authorized_keys is
+    # copied instead, which is the original behaviour.
+    deploy_user_authorized_keys: []
   roles:
     - wait_for_connection
     - packages

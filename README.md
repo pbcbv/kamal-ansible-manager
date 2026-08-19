@@ -18,7 +18,7 @@ It will automatically update your packages and configure these packages to secur
 The playbook also:
 - Remove [Snap](https://snapcraft.io/).
 - Disable ssh password login.
-- Create a non-root `deploy` user (configurable via `deploy_user_name`) with `docker` group membership and root's SSH keys, so Kamal doesn't need to deploy as root.
+- Create a non-root `deploy` user (configurable via `deploy_user_name`) with `docker` group membership, so Kamal doesn't need to deploy as root. It gets root's SSH keys by default, or an explicit set if you list them in `deploy_user_authorized_keys`.
 - Configure `swap` using [geerlingguy/ansible-role-swap](https://github.com/geerlingguy/ansible-role-swap).
 
 ## Getting Started

@@ -15,6 +15,23 @@
     group: "{{ deploy_user_name }}"
     mode: "0700"
 
+# Two ways to decide who may log in as the deploy user. Set
+# deploy_user_authorized_keys and that list is authoritative: the playbook
+# writes exactly those keys, so removing someone means deleting their line
+# from the list rather than remembering to clean up the host by hand.
+# Leave it empty and the original behaviour applies, copying root's keys.
+- name: Authorize the configured SSH keys for the deploy user
+  ansible.builtin.copy:
+    content: |
+      {% for key in deploy_user_authorized_keys %}
+      {{ key }}
+      {% endfor %}
+    dest: "/home/{{ deploy_user_name }}/.ssh/authorized_keys"
+    owner: "{{ deploy_user_name }}"
+    group: "{{ deploy_user_name }}"
+    mode: "0600"
+  when: deploy_user_authorized_keys | length > 0
+
 - name: Authorize the same SSH keys as root for the deploy user
   ansible.builtin.copy:
     src: "/root/.ssh/authorized_keys"
@@ -23,3 +40,4 @@
     owner: "{{ deploy_user_name }}"
     group: "{{ deploy_user_name }}"
     mode: "0600"
+  when: deploy_user_authorized_keys | length == 0
