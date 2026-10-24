@@ -66,11 +66,13 @@
 # the ufw rules above. Restricting the DOCKER-USER chain to the same ports ufw
 # allows closes that bypass.
 #
-# With the lockdown on, ufw allows no public ports, so anything new arriving on
-# the public interface is dropped. The rule is scoped to that interface so it
-# leaves container-to-container traffic and containers' outbound connections
-# alone; cloudflared reaches kamal-proxy from the host itself, which never
-# passes through FORWARD.
+# DOCKER-USER sees forwarded traffic in both directions, so every rule matches
+# on the public interface. Without that, the final DROP also catches
+# connections containers open themselves (SMTP on 587, an external database)
+# and, where br_netfilter is loaded, traffic between containers. With the
+# lockdown on, ufw allows no public ports, so nothing new from the public
+# interface gets through at all. cloudflared reaches kamal-proxy from the host
+# itself, which never passes through FORWARD.
 #
 # This is added to ufw's own after.rules (rather than raw iptables +
 # iptables-persistent) because on Ubuntu the ufw package declares
@@ -87,12 +89,10 @@
     content: |
       :DOCKER-USER - [0:0]
       -A DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
-      {% if firewall_lockdown | bool %}
-      -A DOCKER-USER -i {{ ansible_facts['default_ipv4']['interface'] }} -j DROP
-      {% else %}
-      -A DOCKER-USER -p tcp --dport 80 -j RETURN
-      -A DOCKER-USER -p tcp --dport 443 -j RETURN
-      -A DOCKER-USER -j DROP
+      {% if not firewall_lockdown | bool %}
+      -A DOCKER-USER -i {{ ansible_facts['default_ipv4']['interface'] }} -p tcp --dport 80 -j RETURN
+      -A DOCKER-USER -i {{ ansible_facts['default_ipv4']['interface'] }} -p tcp --dport 443 -j RETURN
       {% endif %}
+      -A DOCKER-USER -i {{ ansible_facts['default_ipv4']['interface'] }} -j DROP
   notify:
     - Reload ufw
