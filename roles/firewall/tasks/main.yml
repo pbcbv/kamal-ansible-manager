@@ -83,6 +83,25 @@
 # reapplies after.rules on every start, so no separate persistence mechanism
 # is needed, and Docker never flushes rules it didn't add to DOCKER-USER.
 # See: https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw
+#
+# The rule trusts anything arriving from docker+ or br-+. Docker names its
+# bridges docker0, docker_gwbridge and br-<first 12 hex of the network id>,
+# but a host bridge someone called br-ext would match the same prefix and let
+# every new connection on it through. Refuse to write the rule then.
+- name: Refuse to trust a bridge Docker did not create
+  ansible.builtin.assert:
+    that: firewall_foreign_bridges | length == 0
+    fail_msg: >-
+      {{ firewall_foreign_bridges | join(', ') }} on {{ inventory_hostname }}
+      matches the docker+/br-+ prefixes the DOCKER-USER rule trusts, but is not
+      a bridge Docker created. Rename it before running the firewall role.
+  vars:
+    firewall_foreign_bridges: >-
+      {{ ansible_facts['interfaces']
+         | select('match', '^(docker|br-)')
+         | reject('match', '^(docker0|docker_gwbridge|br-[0-9a-f]{12})$')
+         | list }}
+
 - name: Restrict DOCKER-USER chain to the ports ufw allows
   ansible.builtin.blockinfile:
     path: /etc/ufw/after.rules
