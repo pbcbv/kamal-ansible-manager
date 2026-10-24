@@ -81,8 +81,9 @@ nothing.
   tunnel to report a live connection to Cloudflare.
 - `firewall` with `firewall_lockdown: true` (the default) deletes the public
   22/80/443 rules, allows SSH only in on `tailscale0`, and makes Docker's
-  `DOCKER-USER` chain drop anything new arriving on the public interface. It
-  refuses to run if `tailscale0` doesn't exist.
+  `DOCKER-USER` chain drop every new connection to a container that doesn't
+  start at a container itself, on any interface. Containers can still reach
+  the internet and each other. It refuses to run if `tailscale0` doesn't exist.
 - Both `tailscale` and `cloudflared` add their apt repo to unattended-upgrades,
   which otherwise only installs Ubuntu's own updates, so fixes for the two
   services left facing the network land within a day. Tailscale's package
