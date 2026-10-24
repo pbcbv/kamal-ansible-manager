@@ -14,10 +14,26 @@
     # from the host on the next run. When left empty, root's authorized_keys is
     # copied instead, which is the original behaviour.
     deploy_user_authorized_keys: []
+    # Pre-approved, tagged Tailscale auth key. Only needed the first time a
+    # host joins the tailnet; later runs see it is already connected.
+    tailscale_authkey: "{{ lookup('env', 'TAILSCALE_AUTHKEY') }}"
+    # Tags the host joins with. The tailnet ACL in tailscale/policy.hujson is
+    # written around tag:server, and tagged hosts get key expiry disabled.
+    tailscale_tags: ["tag:server"]
+    # Machine name on the tailnet, which is also its MagicDNS name.
+    tailscale_hostname: "{{ ansible_facts['hostname'] }}"
+    # Close every public port, SSH included. SSH is then only reachable over
+    # the tailnet and web traffic only through the Cloudflare Tunnel. Run once
+    # with -e firewall_lockdown=false while migrating an existing server, so the
+    # tunnel can be tested before ports 80 and 443 close.
+    firewall_lockdown: true
   roles:
     - wait_for_connection
     - packages
     - docker
+    - tailscale
+    - role: cloudflared
+      when: cloudflared_tunnel_token | length > 0
     - deploy_user
     - firewall
     - security
