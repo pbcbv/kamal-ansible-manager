@@ -1,0 +1,122 @@
+---
+# See: https://pkg.cloudflare.com/index.html
+
+- name: Add Cloudflare GPG apt key
+  ansible.builtin.get_url:
+    url: "https://pkg.cloudflare.com/cloudflare-main.gpg"
+    dest: /usr/share/keyrings/cloudflare-main.gpg
+    mode: "0644"
+    force: false
+
+- name: Add cloudflared repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main"
+    state: present
+    filename: cloudflared
+    update_cache: true
+
+- name: Install cloudflared
+  ansible.builtin.apt:
+    name: cloudflared
+    state: present
+
+# cloudflared is the other thing left facing the network, see the matching
+# task in the tailscale role.
+- name: Let unattended-upgrades install cloudflared updates
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/51unattended-upgrades-cloudflared
+    mode: "0644"
+    content: |
+      Unattended-Upgrade::Origins-Pattern {
+              "origin=cloudflared,label=cloudflared";
+      };
+
+# Unlike Tailscale, the cloudflared package ships no service and restarts
+# nothing on upgrade, so the tunnel would keep running the old binary until
+# the next reboot. This path unit restarts it whenever the binary is replaced.
+- name: Install the unit that restarts cloudflared after an upgrade
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ item.name }}"
+    mode: "0644"
+    content: "{{ item.content }}"
+  loop:
+    - name: cloudflared-upgrade.path
+      content: |
+        [Unit]
+        Description=Watch the cloudflared binary for upgrades
+
+        [Path]
+        PathChanged=/usr/bin/cloudflared
+
+        [Install]
+        WantedBy=multi-user.target
+    - name: cloudflared-upgrade.service
+      content: |
+        [Unit]
+        Description=Restart cloudflared after an upgrade
+
+        [Service]
+        Type=oneshot
+        ExecStart=/usr/bin/systemctl try-restart cloudflared.service
+  loop_control:
+    label: "{{ item.name }}"
+  notify:
+    - Start cloudflared upgrade watcher
+
+- name: Create the cloudflared config directory
+  ansible.builtin.file:
+    path: /etc/cloudflared
+    state: directory
+    mode: "0755"
+
+# The token lives in a root-only file instead of on the ExecStart line, which
+# is where `cloudflared service install` would put it, readable in the unit
+# file and in the process list. Rotating the token is then a change here.
+- name: Write the tunnel token
+  ansible.builtin.copy:
+    content: "{{ cloudflared_tunnel_token }}"
+    dest: /etc/cloudflared/tunnel-token
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify:
+    - Restart cloudflared
+
+# The tunnel's public hostnames and the origin they point at (Kamal's proxy on
+# http://localhost:80) are managed in the Cloudflare dashboard, not here.
+# The metrics address is pinned so the readiness check below knows where to look.
+- name: Install the cloudflared systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/cloudflared.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Cloudflare Tunnel
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=notify
+      ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel --metrics 127.0.0.1:20241 run --token-file /etc/cloudflared/tunnel-token
+      Restart=on-failure
+      RestartSec=5s
+      TimeoutStartSec=0
+
+      [Install]
+      WantedBy=multi-user.target
+  notify:
+    - Restart cloudflared
+
+- name: Apply cloudflared changes before checking the tunnel
+  ansible.builtin.meta: flush_handlers
+
+# /ready answers 200 once at least one connection to Cloudflare's edge is up,
+# and 503 before that.
+- name: Wait for the tunnel to connect to Cloudflare
+  ansible.builtin.uri:
+    url: http://127.0.0.1:20241/ready
+  register: cloudflared_ready
+  until: cloudflared_ready.status == 200
+  retries: 12
+  delay: 5

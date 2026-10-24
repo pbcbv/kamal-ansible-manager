@@ -1,0 +1,89 @@
+---
+# See: https://pkgs.tailscale.com/stable/
+
+- name: Add Tailscale GPG apt key
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_distribution_release }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+    force: false
+
+- name: Add Tailscale repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu {{ ansible_distribution_release }} main"
+    state: present
+    filename: tailscale
+    update_cache: true
+
+- name: Install Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+  notify:
+    - Start tailscaled
+
+# Tailscale is one of the two things left facing the network, so its fixes
+# should land without waiting for the next playbook run. unattended-upgrades
+# only installs from Ubuntu's own archives unless told otherwise. Apt merges
+# Origins-Pattern lists across files, so this adds to the stock list rather
+# than replacing it. The package restarts tailscaled itself on upgrade.
+- name: Let unattended-upgrades install Tailscale updates
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/51unattended-upgrades-tailscale
+    mode: "0644"
+    content: |
+      Unattended-Upgrade::Origins-Pattern {
+              "origin=Tailscale,label=Tailscale";
+      };
+
+- name: Start tailscaled before joining the tailnet
+  ansible.builtin.meta: flush_handlers
+
+- name: Check whether the host is already on the tailnet
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+
+- name: Read the Tailscale backend state
+  ansible.builtin.set_fact:
+    tailscale_backend_state: "{{ (tailscale_status.stdout | default('{}', true) | from_json).BackendState | default('') }}"
+
+- name: Require an auth key to join the tailnet
+  ansible.builtin.assert:
+    that: tailscale_authkey | length > 0
+    fail_msg: >-
+      {{ inventory_hostname }} is not on the tailnet yet. Export TAILSCALE_AUTHKEY
+      with a pre-approved auth key tagged {{ tailscale_tags | join(',') }} and run again.
+  when: tailscale_backend_state != 'Running'
+
+# A device that joins with a tagged auth key is owned by the tag rather than
+# by a user, and Tailscale disables key expiry for it, so the server does not
+# drop off the tailnet after 180 days. The auth key's own expiry only limits
+# how long it can be used to join.
+- name: Join the tailnet
+  ansible.builtin.command: >-
+    tailscale up
+    --auth-key={{ tailscale_authkey }}
+    --advertise-tags={{ tailscale_tags | join(',') }}
+    --hostname={{ tailscale_hostname }}
+  no_log: true
+  changed_when: true
+  when: tailscale_backend_state != 'Running'
+
+- name: Read the host's Tailscale IPv4 address
+  ansible.builtin.command: tailscale ip -4
+  register: tailscale_ip
+  changed_when: false
+
+# From here on Ansible reaches the host over the tailnet instead of whatever
+# address the inventory gave. That proves the controller can SSH in through
+# Tailscale, ACL included, before the firewall role closes public SSH, and it
+# keeps the rest of the play (including the final reboot) working after it has.
+- name: Connect to the host over the tailnet from now on
+  ansible.builtin.set_fact:
+    ansible_host: "{{ tailscale_ip.stdout }}"
+
+- name: Wait for SSH over the tailnet
+  ansible.builtin.wait_for_connection:
+    timeout: 60

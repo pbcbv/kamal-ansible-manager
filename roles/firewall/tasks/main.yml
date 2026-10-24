@@ -1,19 +1,51 @@
 ---
-- name: Configure ufw defaults
+- name: Deny incoming traffic by default
   community.general.ufw:
-    direction: "{{ item.direction }}"
-    policy: "{{ item.policy }}"
-  loop:
-    - direction: incoming
-      policy: deny
-    - direction: outgoing
-      policy: allow
+    direction: incoming
+    policy: deny
 
-- name: Configure ufw rules
+- name: Allow outgoing traffic by default
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+
+# The lockdown closes every public port, SSH included, so it must never run on
+# a host Ansible can't also reach over the tailnet. The tailscale role has
+# already moved the connection there; this catches it being left out.
+- name: Check that the tailnet interface exists
+  ansible.builtin.stat:
+    path: /sys/class/net/tailscale0
+  register: firewall_tailscale_interface
+  when: firewall_lockdown | bool
+
+- name: Refuse to close public SSH without Tailscale
+  ansible.builtin.assert:
+    that: firewall_tailscale_interface.stat.exists
+    fail_msg: >-
+      tailscale0 is missing on {{ inventory_hostname }}. Closing public SSH now
+      would lock you out. Run the tailscale role first.
+  when: firewall_lockdown | bool
+
+# tailscaled also accepts tailnet traffic in its own ts-input chain, ahead of
+# ufw, which makes the tailnet ACL the real gate. This rule keeps SSH working
+# should that chain ever be absent.
+- name: Allow SSH over the tailnet
+  community.general.ufw:
+    rule: allow
+    interface: tailscale0
+    direction: in
+    port: "22"
+    proto: tcp
+
+# With the lockdown on, these are deleted rather than just not added: ufw keeps
+# rules from earlier runs, and a server being locked down still has them.
+# Web traffic arrives through cloudflared's outbound tunnel instead.
+- name: Configure public ufw rules
   community.general.ufw:
     rule: "{{ item.rule }}"
     port: "{{ item.port }}"
     proto: "{{ item.proto }}"
+    delete: "{{ firewall_lockdown | bool }}"
   loop:
     - rule: 'limit'
       port: '22'
@@ -34,6 +66,16 @@
 # the ufw rules above. Restricting the DOCKER-USER chain to the same ports ufw
 # allows closes that bypass.
 #
+# DOCKER-USER sees forwarded traffic in both directions, so traffic that starts
+# at a container (arriving from docker0 or a user-defined br-* network such as
+# Kamal's) is let through first. Without that, the final DROP also catches
+# connections containers open themselves (SMTP on 587, an external database)
+# and, where br_netfilter is loaded, traffic between containers. Everything
+# else new is dropped whatever interface it arrives on: the public NIC, a
+# provider private network, a second NIC or tailscale0. With the lockdown on,
+# that includes 80 and 443. cloudflared reaches kamal-proxy from the host
+# itself, which never passes through FORWARD.
+#
 # This is added to ufw's own after.rules (rather than raw iptables +
 # iptables-persistent) because on Ubuntu the ufw package declares
 # `Breaks: iptables-persistent, netfilter-persistent` — installing
@@ -41,6 +83,25 @@
 # reapplies after.rules on every start, so no separate persistence mechanism
 # is needed, and Docker never flushes rules it didn't add to DOCKER-USER.
 # See: https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw
+#
+# The rule trusts anything arriving from docker+ or br-+. Docker names its
+# bridges docker0, docker_gwbridge and br-<first 12 hex of the network id>,
+# but a host bridge someone called br-ext would match the same prefix and let
+# every new connection on it through. Refuse to write the rule then.
+- name: Refuse to trust a bridge Docker did not create
+  ansible.builtin.assert:
+    that: firewall_foreign_bridges | length == 0
+    fail_msg: >-
+      {{ firewall_foreign_bridges | join(', ') }} on {{ inventory_hostname }}
+      matches the docker+/br-+ prefixes the DOCKER-USER rule trusts, but is not
+      a bridge Docker created. Rename it before running the firewall role.
+  vars:
+    firewall_foreign_bridges: >-
+      {{ ansible_facts['interfaces']
+         | select('match', '^(docker|br-)')
+         | reject('match', '^(docker0|docker_gwbridge|br-[0-9a-f]{12})$')
+         | list }}
+
 - name: Restrict DOCKER-USER chain to the ports ufw allows
   ansible.builtin.blockinfile:
     path: /etc/ufw/after.rules
@@ -49,8 +110,12 @@
     content: |
       :DOCKER-USER - [0:0]
       -A DOCKER-USER -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      -A DOCKER-USER -i docker+ -j RETURN
+      -A DOCKER-USER -i br-+ -j RETURN
+      {% if not firewall_lockdown | bool %}
       -A DOCKER-USER -p tcp --dport 80 -j RETURN
       -A DOCKER-USER -p tcp --dport 443 -j RETURN
+      {% endif %}
       -A DOCKER-USER -j DROP
   notify:
     - Reload ufw

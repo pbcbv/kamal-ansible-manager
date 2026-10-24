@@ -1,0 +1,6 @@
+---
+# Token of a remotely-managed Cloudflare Tunnel (Zero Trust > Networks >
+# Tunnels). It is a role default rather than a play var so it can be set per
+# host in hosts.ini: only web hosts get one, and a host without a token gets
+# no tunnel. Two hosts with the same token become replicas of one tunnel.
+cloudflared_tunnel_token: ""
