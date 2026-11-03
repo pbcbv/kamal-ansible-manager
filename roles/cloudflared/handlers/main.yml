@@ -1,0 +1,14 @@
+---
+- name: Restart cloudflared
+  ansible.builtin.systemd_service:
+    name: cloudflared
+    state: restarted
+    enabled: true
+    daemon_reload: true
+
+- name: Start cloudflared upgrade watcher
+  ansible.builtin.systemd_service:
+    name: cloudflared-upgrade.path
+    state: restarted
+    enabled: true
+    daemon_reload: true

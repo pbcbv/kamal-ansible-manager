@@ -1,0 +1,68 @@
+// Tailnet policy for servers provisioned by this playbook.
+//
+// Paste it into the admin console (Access controls > Edit file). It replaces
+// the whole tailnet policy, so merge it by hand if yours has rules of its own.
+//
+// What it allows:
+// - Your own devices reach each other, as in the default policy.
+// - Your own devices reach tag:server hosts on SSH (and ping).
+// - Nothing else. Tailscale denies anything not granted, so a tag:server host
+//   cannot open a connection to your laptop, your phone or another server.
+//   A compromised server gives an attacker no route into the rest of the tailnet.
+{
+	"tagOwners": {
+		// Empty: only tailnet admins can apply the tag, through the console
+		// or an auth key they generated with it.
+		"tag:server": [],
+		// "tag:ci": [],
+	},
+
+	"grants": [
+		{
+			"src": ["autogroup:member"],
+			"dst": ["autogroup:self"],
+			"ip":  ["*"],
+		},
+		{
+			"src": ["autogroup:member"],
+			"dst": ["tag:server"],
+			"ip":  ["tcp:22", "icmp:*"],
+		},
+		// Uncomment, with tag:ci above, if Kamal deploys from GitHub Actions
+		// through tailscale/github-action using an OAuth client tagged tag:ci.
+		// {
+		// 	"src": ["tag:ci"],
+		// 	"dst": ["tag:server"],
+		// 	"ip":  ["tcp:22"],
+		// },
+	],
+
+	// Tailscale SSH stays as in the default policy: your own devices only, in
+	// check mode. The servers use regular OpenSSH over the tailnet instead.
+	"ssh": [
+		{
+			"action": "check",
+			"src":    ["autogroup:member"],
+			"dst":    ["autogroup:self"],
+			"users":  ["autogroup:nonroot", "root"],
+		},
+	],
+
+	// Checked on every save. The console refuses a policy that breaks them.
+	"tests": [
+		{
+			"src":  "tag:server",
+			"deny": ["tag:server:22", "tag:server:80"],
+		},
+		// Add your own login to prove servers can't reach your devices, and
+		// that you can reach the servers:
+		// {
+		// 	"src":    "you@example.com",
+		// 	"accept": ["tag:server:22"],
+		// },
+		// {
+		// 	"src":  "tag:server",
+		// 	"deny": ["you@example.com:22", "you@example.com:443"],
+		// },
+	],
+}

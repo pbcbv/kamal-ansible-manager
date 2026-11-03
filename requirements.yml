@@ -1,5 +1,8 @@
 ---
 collections:
+  # geerlingguy.swap uses mount, which lives in ansible.posix. The full
+  # `ansible` package bundles it, ansible-core does not.
+  - ansible.posix
   - community.general
 
 roles:

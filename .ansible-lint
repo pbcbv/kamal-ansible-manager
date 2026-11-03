@@ -1,4 +1,9 @@
 ---
+# Where ansible-lint installs requirements.yml (geerlingguy.swap and the
+# collections). That is third-party code, not ours to restyle.
+exclude_paths:
+  - .ansible/
+
 skip_list:
   - package-latest
   - run-once[play]
