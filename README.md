@@ -82,8 +82,12 @@ nothing.
 - `firewall` with `firewall_lockdown: true` (the default) deletes the public
   22/80/443 rules, allows SSH only in on `tailscale0`, and makes Docker's
   `DOCKER-USER` chain drop every new connection to a container that doesn't
-  start at a container itself, on any interface. Containers can still reach
-  the internet and each other. It refuses to run if `tailscale0` doesn't exist.
+  start at a container itself, on any interface, over IPv4 and IPv6.
+  Containers can still reach the internet and each other. It refuses to run
+  if `tailscale0` doesn't exist. Because the drop covers `tailscale0` too,
+  published ports are not reachable over the tailnet either: `curl
+  http://100.x.y.z` gets no answer, by design. Debug through the tunnel, or
+  SSH in and hit `localhost`.
 - Both `tailscale` and `cloudflared` add their apt repo to unattended-upgrades,
   which otherwise only installs Ubuntu's own updates, so fixes for the two
   services left facing the network land within a day. Tailscale's package
@@ -102,7 +106,10 @@ touch them:
    gives no way into the rest of your tailnet.
 2. **Auth key.** Settings > Keys > Generate auth key: reusable, pre-approved,
    tagged `tag:server`, not ephemeral. Export it as `TAILSCALE_AUTHKEY` when you
-   provision a new host.
+   provision a new host. The key stays valid for joining new `tag:server`
+   devices until it expires or you revoke it, so revoke it in the admin
+   console once every host has joined; hosts already on the tailnet don't need
+   it again.
 3. **Tunnel.** Zero Trust > Networks > Tunnels > Create a tunnel (cloudflared).
    Copy its token into `hosts.ini` for that host and add a published
    application route per hostname, pointing at `http://localhost:80`

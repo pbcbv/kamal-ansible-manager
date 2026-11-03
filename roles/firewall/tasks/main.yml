@@ -84,10 +84,20 @@
 # is needed, and Docker never flushes rules it didn't add to DOCKER-USER.
 # See: https://docs.docker.com/engine/network/packet-filtering-firewalls/#docker-and-ufw
 #
+# The same block goes into after6.rules. Docker manages ip6tables as well (by
+# default since Engine 27), so a Docker network with IPv6 enabled publishes
+# its ports through an ip6tables DOCKER-USER chain that the IPv4 rules never
+# see. ufw loads after6.rules when IPV6=yes in /etc/default/ufw, Ubuntu's
+# default.
+#
 # The rule trusts anything arriving from docker+ or br-+. Docker names its
 # bridges docker0, docker_gwbridge and br-<first 12 hex of the network id>,
 # but a host bridge someone called br-ext would match the same prefix and let
-# every new connection on it through. Refuse to write the rule then.
+# every new connection on it through. Refuse to write the rule then. The
+# reverse case fails closed: a Docker network renamed with
+# com.docker.network.bridge.name, or a macvlan/ipvlan network whose traffic
+# arrives on the parent interface, is not trusted and has its outbound
+# connections dropped. Kamal creates neither.
 - name: Refuse to trust a bridge Docker did not create
   ansible.builtin.assert:
     that: firewall_foreign_bridges | length == 0
@@ -104,7 +114,7 @@
 
 - name: Restrict DOCKER-USER chain to the ports ufw allows
   ansible.builtin.blockinfile:
-    path: /etc/ufw/after.rules
+    path: "{{ item }}"
     marker: "# {mark} ANSIBLE MANAGED BLOCK - docker-user"
     insertbefore: "^COMMIT"
     content: |
@@ -117,5 +127,8 @@
       -A DOCKER-USER -p tcp --dport 443 -j RETURN
       {% endif %}
       -A DOCKER-USER -j DROP
+  loop:
+    - /etc/ufw/after.rules
+    - /etc/ufw/after6.rules
   notify:
     - Reload ufw

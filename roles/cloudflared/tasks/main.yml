@@ -112,7 +112,9 @@
   ansible.builtin.meta: flush_handlers
 
 # /ready answers 200 once at least one connection to Cloudflare's edge is up,
-# and 503 before that.
+# and 503 before that. This runs on every play, not only when cloudflared
+# changed, so a Cloudflare outage lasting longer than a minute fails an
+# otherwise no-op run here.
 - name: Wait for the tunnel to connect to Cloudflare
   ansible.builtin.uri:
     url: http://127.0.0.1:20241/ready

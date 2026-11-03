@@ -71,10 +71,17 @@
   changed_when: true
   when: tailscale_backend_state != 'Running'
 
+# `tailscale up` returns once the backend is Running, so the address is
+# normally there on the first try. The retry covers it being briefly empty,
+# which would otherwise set an empty ansible_host and fail the next task
+# with a connection error that says nothing about why.
 - name: Read the host's Tailscale IPv4 address
   ansible.builtin.command: tailscale ip -4
   register: tailscale_ip
   changed_when: false
+  until: tailscale_ip.stdout | length > 0
+  retries: 5
+  delay: 2
 
 # From here on Ansible reaches the host over the tailnet instead of whatever
 # address the inventory gave. That proves the controller can SSH in through
