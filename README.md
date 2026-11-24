@@ -176,9 +176,11 @@ proxy:
 
 ## A tailnet-only app
 
-An app that must never be public, such as one holding private finances, gets no route in the tunnel. HTTPS ends on the server at `tailscale serve`, with a certificate for the machine's tailnet name, and only devices the policy names can open it. It can share a server, and its kamal-proxy, with public apps.
+An app that must never be public, such as one holding private finances, gets no route in the tunnel. HTTPS ends on the server at `tailscale serve`, with a certificate for the machine's tailnet name, and only devices the policy names can open it.
 
-1. **The policy.** Give the server a tag of its own next to `tag:server`, say `tag:app`, and grant only the people who use the app port 443 on it. Save the policy before tagging: a tag can be applied only once it is in `tagOwners`.
+Give such an app a server of its own, in a provider project of its own, with no tunnel token. On a server shared with a public app, whoever breaks out of the public app's container is root on the host and reads the private app's volume and secrets (`docker inspect`). Both apps would also share one Docker network and one kamal-proxy. Hetzner's S3 keys reach every bucket in their project, so keep the private app's buckets out of projects other apps use.
+
+1. **The policy.** Give the server a tag of its own next to `tag:server`, say `tag:app`, and grant only the people who use the app port 443 on it.
 
    ```hujson
    "tagOwners": { "tag:server": [], "tag:app": [] },
@@ -191,7 +193,11 @@ An app that must never be public, such as one holding private finances, gets no 
    ],
    ```
 
-   Then Machines > the server > Edit ACL tags: add `tag:app` and keep `tag:server`, which the SSH grant needs. Or pass both in `tailscale_tags` when provisioning.
+   Save it before generating the server's auth key: the key carries both `tag:server` and `tag:app`, and Tailscale refuses a tag the policy does not own. `tailscale_tags` is a play variable, so only `-e` overrides it on the first run; the tags are set when the server joins, and later runs leave them alone:
+
+   ```sh
+   ansible-playbook -i hosts.ini playbook.yml -e '{"tailscale_tags": ["tag:server", "tag:app"]}'
+   ```
 
 2. **HTTPS on the tailnet.** On the server:
 
@@ -205,11 +211,9 @@ An app that must never be public, such as one holding private finances, gets no 
 
 3. **No firewall rule.** tailscaled's own `ts-input` chain comes first in `INPUT` and accepts everything on `tailscale0` before ufw sees it (`iptables -S INPUT` starts with `-j ts-input`). The policy is the only gate, so the grant above is what keeps everyone else out. Until it exists, the page times out even from your own devices.
 
-4. **Kamal.** The same `ssh`, `ssl: false` and `run` block as above. The app gets every request kamal-proxy has no other host for: give it `proxy.host` with the tailnet name, or, if that name must stay out of the repository, leave `host` out and have the app refuse every other name (Rails: `config.hosts`). Either way a tunnel route added by mistake gets an error, not the app.
+4. **Kamal.** The same `ssh`, `ssl: false` and `run` block as above; the loopback binding also keeps kamal-proxy off port 443 of the tailnet address, where `tailscale serve` listens. Give the app `proxy.host` with the tailnet name, or, if that name must stay out of the repository, leave `host` out and have the app refuse every other name (Rails: `config.hosts`).
 
-5. **Check** from a device the grant names, before the first deploy: `curl -sI https://<server>.<tailnet>.ts.net/up` answers with a 404 from kamal-proxy, which has no app for that name yet. A timeout means the grant or the tag is missing. From any other device it must time out.
-
-Apps on one server share one Docker network, so a public app that is taken over can open connections to the tailnet-only app's container directly. That app's own login is what stands there.
+5. **Check** from a device the grant names, before the first deploy: `curl -sI https://<server>.<tailnet>.ts.net/up` gets an answer from `tailscale serve`, a 502 while nothing listens on port 80. A timeout means the grant or a tag is missing. From any other device it must time out.
 
 ## Moving a live server
 
