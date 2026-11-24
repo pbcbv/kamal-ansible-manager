@@ -2,12 +2,14 @@
 ansible_become_method=su
 ansible_user=root
 
-# A new host can be listed by its public IP for the first run; the playbook
-# moves its own connection onto the tailnet. After that the public IP no
-# longer answers SSH, so list the host by its Tailscale name or 100.x address.
+# A new host is listed by name with ansible_host set to its public IP for the
+# first run; the playbook moves its own connection onto the tailnet. After
+# that the public IP no longer answers SSH, so remove ansible_host and the
+# name resolves to the host's Tailscale (MagicDNS) name.
 #
-# Web hosts get the token of their Cloudflare Tunnel. Hosts without one, such
-# as workers, get no tunnel.
+# Web hosts get the token of their Cloudflare Tunnel, read from the
+# environment so it never lands in this file. Hosts without one, such as
+# workers, get no tunnel.
 [webservers]
-<host1> cloudflared_tunnel_token=<tunnel-token>
-<host2>
+app-1 ansible_host=203.0.113.10 cloudflared_tunnel_token="{{ lookup('env', 'CLOUDFLARED_TUNNEL_TOKEN') }}"
+worker-1 ansible_host=203.0.113.11
