@@ -193,10 +193,10 @@ Give such an app a server of its own, in a provider project of its own, with no 
    ],
    ```
 
-   Save it before generating the server's auth key: the key carries both `tag:server` and `tag:app`, and Tailscale refuses a tag the policy does not own. `tailscale_tags` is a play variable, so only `-e` overrides it on the first run; the tags are set when the server joins, and later runs leave them alone:
+   Save it before generating the server's auth key: the key carries both `tag:server` and `tag:app`, and Tailscale refuses a tag the policy does not own. `tailscale_tags` is a play variable, so only `-e` overrides it on the first run; the tags are set when the server joins, and later runs leave them alone. Limit the run to the new server, so it does not reach the others in the inventory with this environment:
 
    ```sh
-   ansible-playbook -i hosts.ini playbook.yml --limit app-2 -e '{"tailscale_tags": ["tag:server", "tag:app"]}'
+   ansible-playbook -i hosts.ini playbook.yml --limit <new-server> -e '{"tailscale_tags": ["tag:server", "tag:app"]}'
    ```
 
 2. **HTTPS on the tailnet.** On the server:
