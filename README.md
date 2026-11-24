@@ -174,6 +174,47 @@ proxy:
 - **Webhooks.** Cloudflare's Bot Fight Mode and WAF challenges can block them. Test each webhook through the tunnel and add a WAF skip rule for its path if needed.
 - **Deploying from CI.** A CI runner is not on the tailnet. Uncomment the `tag:ci` lines in the policy, create a Tailscale OAuth client for that tag and join the runner with `tailscale/github-action` before the deploy step.
 
+## A tailnet-only app
+
+An app that must never be public, such as one holding private finances, gets no route in the tunnel. HTTPS ends on the server at `tailscale serve`, with a certificate for the machine's tailnet name, and only devices the policy names can open it.
+
+Give such an app a server of its own, in a provider project of its own, with no tunnel token. On a server shared with a public app, whoever breaks out of the public app's container is root on the host and reads the private app's volume and secrets (`docker inspect`). Both apps would also share one Docker network and one kamal-proxy. Hetzner's S3 keys reach every bucket in their project, so keep the private app's buckets out of projects other apps use.
+
+1. **The policy.** Give the server a tag of its own next to `tag:server`, say `tag:app`, and grant only the people who use the app port 443 on it.
+
+   ```hujson
+   "tagOwners": { "tag:server": [], "tag:app": [] },
+   "grants": [
+   	{ "src": ["you@example.com"], "dst": ["tag:app"], "ip": ["tcp:443"] },
+   ],
+   "tests": [
+   	{ "src": "you@example.com", "accept": ["tag:app:443"] },
+   	{ "src": "tag:server", "deny": ["tag:app:443"] },
+   ],
+   ```
+
+   Save it before generating the server's auth key: the key carries both `tag:server` and `tag:app`, and Tailscale refuses a tag the policy does not own. `tailscale_tags` is a play variable, so only `-e` overrides it on the first run; the tags are set when the server joins, and later runs leave them alone. Limit the run to the new server, so it does not reach the others in the inventory with this environment:
+
+   ```sh
+   ansible-playbook -i hosts.ini playbook.yml --limit <new-server> -e '{"tailscale_tags": ["tag:server", "tag:app"]}'
+   ```
+
+2. **HTTPS on the tailnet.** On the server:
+
+   ```sh
+   tailscale serve --bg --https=443 http://127.0.0.1:80
+   ```
+
+   The first time on a tailnet it stops with "Serve is not enabled on your tailnet" and a link, and waits. The page behind it enables HTTPS certificates and offers Tailscale Funnel, **ticked by default. Untick Funnel**: it publishes nodes on the internet and edits the policy to let every member do so. Apps behind the tunnel never needed this step, because Cloudflare holds their certificate. `tailscale serve status` then shows the name, `<server>.<tailnet>.ts.net`, with "(tailnet only)".
+
+   A certificate writes that full name to the public Certificate Transparency logs, permanently. It reveals the name, not a way in.
+
+3. **No firewall rule.** tailscaled's own `ts-input` chain comes first in `INPUT` and accepts everything on `tailscale0` before ufw sees it (`iptables -S INPUT` starts with `-j ts-input`). The policy is the only gate, so the grant above is what keeps everyone else out. Until it exists, the page times out even from your own devices.
+
+4. **Kamal.** The same `ssh`, `ssl: false` and `run` block as above; the loopback binding also keeps kamal-proxy off port 443 of the tailnet address, where `tailscale serve` listens. Give the app `proxy.host` with the tailnet name, or, if that name must stay out of the repository, leave `host` out and have the app refuse every other name (Rails: `config.hosts`).
+
+5. **Check** from a device the grant names, before the first deploy: `curl -sI https://<server>.<tailnet>.ts.net/up` gets an answer from `tailscale serve`, a 502 while nothing listens on port 80. A timeout means the grant or a tag is missing. From any other device it must time out.
+
 ## Moving a live server
 
 On a server that already serves traffic on its public IP, the tunnel has to carry the traffic before ports 80 and 443 close:
